@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">Game ScoreKeeper</string>
+    <string name="action_edit">Changer le score</string>
+    <string name="action_add_player">Ajouter un joueur</string>
+    <string name="action_remove_player">Supprimer un joueur</string>
+    <string name="add_player_title">Ajouter un nouveau joueur</string>
+    <string name="add_player_message">Entrez un nom pour le nouveau joueur.</string>
+    <string name="add_player_empty_name_error">Nom du joueur ne peut pas \u00eatre vide.</string>
+    <string name="edit_score_title">Changer le score</string>
+    <string name="edit_score_message">Entrez le nombre de points \u00e0 ajouter pour %s (nombre n\u00e9gatif supprime les points).</string>
+    <string name="edit_score_non_numeric_error">Le nombre de points \u00e0 ajouter doit \u00eatre une valeur num\u00e9rique.</string>
+    <string name="score_board_title">Tableau de bord</string>
+    <string name="score_board_name">Nom</string>
+    <string name="score_board_score">Score</string>
+
+</resources>
