@@ -11,8 +11,13 @@
     <string name="edit_score_title">Update Score</string>
     <string name="edit_score_message">Enter the number of points to add for %s (negative number removes points).</string>
     <string name="edit_score_non_numeric_error">The number of points to add must be a numeric value.</string>
+    <string name="remove_player_title">Remove Player</string>
     <string name="score_board_title">Score Board</string>
     <string name="score_board_name">Name</string>
     <string name="score_board_score">Score</string>
+    <string name="dialog_select_player_edit">Select the player to edit and enter the number of points to add or remove.</string>
+    <string name="dialog_select_player_remove">Select the player to remove.</string>
+    <string name="dialog_player">Player:</string>
+    <string name="dialog_points">Points:</string>
 
 </resources>

@@ -6,30 +6,43 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+import android.annotation.SuppressLint;
+import android.app.PendingIntent;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.IntentFilter.MalformedMimeTypeException;
+import android.nfc.NdefMessage;
+import android.nfc.NdefRecord;
+import android.nfc.NfcAdapter;
+import android.nfc.NfcAdapter.CreateNdefMessageCallback;
+import android.nfc.NfcEvent;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Parcelable;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.app.FragmentPagerAdapter;
+import android.support.v4.view.PagerTabStrip;
 import android.support.v4.view.ViewPager;
-import android.view.LayoutInflater;
+import android.util.Log;
+import android.util.TypedValue;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.TableLayout;
-import android.widget.TableRow;
-import android.widget.TextView;
 
 import com.fletch.gamescorekeeper.constants.Constants;
 import com.fletch.gamescorekeeper.dialogs.Dialogs;
 import com.fletch.gamescorekeeper.dialogs.InputDialogFragment;
 import com.fletch.gamescorekeeper.dialogs.InputDialogType;
 import com.fletch.gamescorekeeper.dialogs.NameInputDialogFragment;
+import com.fletch.gamescorekeeper.dialogs.RemovePlayerDialogFragment;
 import com.fletch.gamescorekeeper.dialogs.ScoreInputDialogFragment;
+import com.fletch.gamescorekeeper.dialogs.SelectPlayerScoreInputDialogFragment;
 import com.fletch.gamescorekeeper.listeners.InputDialogListener;
+import com.fletch.gamescorekeeper.utils.NfcUtils;
 
-public class ScoreBoardActivity extends FragmentActivity implements InputDialogListener, Constants {
+public class ScoreBoardActivity extends FragmentActivity implements InputDialogListener, Constants,
+        CreateNdefMessageCallback {
 
     /**
      * The {@link android.support.v4.view.PagerAdapter} that will provide
@@ -45,6 +58,9 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
      * The {@link ViewPager} that will host the section contents.
      */
     ViewPager mViewPager;
+    NfcAdapter mNfcAdapter;
+    private PendingIntent pendingIntent;
+    private IntentFilter[] intentFilterArray;
 
     private List<Player> playerList;
 
@@ -59,8 +75,8 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
             playerList = new ArrayList<Player>();
         }
 
-        // Create the adapter that will return a fragment for each of the three
-        // primary sections of the app.
+        // Create the adapter that will return a fragment for each of the
+        // players added.
         mSectionsPagerAdapter = new SectionsPagerAdapter(getSupportFragmentManager());
 
         // Set up the ViewPager with the sections adapter.
@@ -70,6 +86,30 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
         if(savedInstanceState != null) {
             mViewPager.setCurrentItem(savedInstanceState.getInt(CURRENT_POSITION));
         }
+
+        mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
+        if(mNfcAdapter == null) { // NFC not available on this device.
+            return;
+        }
+
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+            // Register a callback for creating NDEF messages.
+            mNfcAdapter.setNdefPushMessageCallback(this, this);
+        }
+
+        pendingIntent = PendingIntent.getActivity(this, 0,
+                new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0);
+        IntentFilter ndef = new IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED);
+        try {
+            ndef.addDataType("application/vnd.com.fletch.gamescorekeeper");
+        } catch(MalformedMimeTypeException e) {
+            Log.e("ScoreBoard", "Invalid filter...", e);
+        }
+        intentFilterArray = new IntentFilter[] { ndef };
+
+        PagerTabStrip tabStrip = (PagerTabStrip) findViewById(R.id.pager_tab_strip);
+        tabStrip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        tabStrip.setDrawFullUnderline(true);
     }
 
     @Override
@@ -106,11 +146,15 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
         case R.id.edit_item:
             if(mViewPager.getCurrentItem() > 0) {
                 getPointsToAdd();
+            } else {
+                getSelectPlayerPointsToAdd();
             }
             break;
         case R.id.delete_item:
             if(mViewPager.getCurrentItem() > 0) {
                 removePlayer(mViewPager.getCurrentItem());
+            } else {
+                getSelectPlayerToRemove();
             }
             break;
         default:
@@ -126,6 +170,61 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
         super.onSaveInstanceState(outState);
         outState.putSerializable(PLAYER_LIST, (Serializable) playerList);
         outState.putInt(CURRENT_POSITION, mViewPager.getCurrentItem());
+    }
+
+    @Override
+    protected void onResume() {
+
+        super.onResume();
+
+        if(mNfcAdapter != null) {
+            mNfcAdapter.enableForegroundDispatch(this, pendingIntent, intentFilterArray, null);
+        }
+
+        // Device supports NFC and activity was started by Android NFC beam
+        if(mNfcAdapter != null && NfcAdapter.ACTION_NDEF_DISCOVERED.equals(getIntent().getAction())) {
+            processIntent(getIntent());
+        }
+    }
+
+    @Override
+    protected void onPause() {
+
+        super.onPause();
+
+        if(mNfcAdapter != null) {
+            mNfcAdapter.disableForegroundDispatch(this);
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+
+        // onResume method handles the NFC intent.
+        setIntent(intent);
+    }
+
+    @SuppressLint("NewApi")
+    @Override
+    public NdefMessage createNdefMessage(NfcEvent event) {
+
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            String message;
+            if(mViewPager.getCurrentItem() == 0) {
+                message = NfcUtils.getPlayerListAsString(playerList);
+            } else {
+                message = NfcUtils
+                        .getPlayerAsString(playerList.get(mViewPager.getCurrentItem() - 1));
+            }
+            NdefMessage ndefMessage = new NdefMessage(new NdefRecord[] {
+                    NdefRecord.createMime("application/vnd.com.fletch.gamescorekeeper",
+                            message.getBytes()),
+                    NdefRecord.createApplicationRecord("com.fletch.gamescorekeeper") });
+
+            return ndefMessage;
+        }
+
+        return null;
     }
 
     /**
@@ -166,6 +265,85 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
         dialog.show(fragmentManager, getString(R.string.edit_score_title));
     }
 
+    /**
+     * Displays an input dialog for the user to select a player to edit and add
+     * or remove points for the selected player.
+     */
+    private void getSelectPlayerPointsToAdd() {
+
+        SelectPlayerScoreInputDialogFragment dialog = new SelectPlayerScoreInputDialogFragment();
+        Bundle arguments = new Bundle();
+        arguments.putSerializable(PLAYER_LIST, (Serializable) playerList);
+
+        FragmentManager fragmentManager = getSupportFragmentManager();
+
+        dialog.setArguments(arguments);
+        dialog.show(fragmentManager, getString(R.string.edit_score_title));
+    }
+
+    /**
+     * Displays an input dialog allowing the user to select a player to remove.
+     */
+    private void getSelectPlayerToRemove() {
+
+        RemovePlayerDialogFragment dialog = new RemovePlayerDialogFragment();
+        Bundle arguments = new Bundle();
+        arguments.putSerializable(PLAYER_LIST, (Serializable) playerList);
+
+        FragmentManager fragmentManager = getSupportFragmentManager();
+
+        dialog.setArguments(arguments);
+        dialog.show(fragmentManager, getString(R.string.remove_player_title));
+    }
+
+    /**
+     * Parses the received NDEF message and updates the player list (and thus
+     * the scoreboard) accordingly.
+     * 
+     * @param intent
+     *            NFC intent
+     */
+    private void processIntent(Intent intent) {
+
+        Parcelable[] rawMsgs = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES);
+
+        // only one message sent during the beam
+        NdefMessage ndefMessage = (NdefMessage) rawMsgs[0];
+
+        // record 0 contains the MIME type, record 1 is the AAR, if present
+        List<Player> nfcPlayerList = NfcUtils.getPlayerListFromString(new String(ndefMessage
+                .getRecords()[0].getPayload()));
+        if(nfcPlayerList.size() == 1) {
+            updatePlayerList(nfcPlayerList.get(0));
+        } else {
+            playerList = nfcPlayerList;
+            sortPlayerList();
+            invalidateOptionsMenu();
+            mSectionsPagerAdapter.notifyDataSetChanged();
+        }
+    }
+
+    private void updatePlayerList(Player player) {
+
+        boolean found = false;
+        for(int i = 0; i < playerList.size(); i++) {
+            if(playerList.get(i).getName().equals(player.getName())) {
+                found = true;
+                int pointsToAdd = player.getScore() - playerList.get(i).getScore();
+                editScore(i + 1, pointsToAdd);
+                mViewPager.setCurrentItem(0);
+            }
+        }
+
+        if(!found) {
+            addPlayer(player.getName(), player.getScore());
+        }
+    }
+
+    public List<Player> getPlayerList() {
+        return this.playerList;
+    }
+
     @Override
     public void onFinishedNameInputDialog(String inputText) {
 
@@ -191,6 +369,27 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
         editScore(mViewPager.getCurrentItem(), pointsToAdd);
     }
 
+    @Override
+    public void onFinishedSelectPlayerScoreInputDialog(int position, String inputText) {
+
+        int pointsToAdd = 0;
+        if(inputText.matches("^-?\\d+$")) {
+            pointsToAdd = Integer.parseInt(inputText);
+        } else {
+            Dialogs.displayAlert(this, getString(R.string.edit_score_non_numeric_error));
+            return;
+        }
+
+        editScore(position + 1, pointsToAdd);
+        mViewPager.setCurrentItem(0);
+    }
+
+    @Override
+    public void onFinishedSelectRemovePlayerInputDialog(int position) {
+
+        removePlayer(position + 1);
+    }
+
     /**
      * Adds a new player with the given name.
      * 
@@ -200,6 +399,21 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
     private void addPlayer(String name) {
 
         Player player = new Player(name);
+        playerList.add(player);
+        sortPlayerList();
+        invalidateOptionsMenu();
+        mSectionsPagerAdapter.notifyDataSetChanged();
+    }
+
+    /**
+     * Adds a new player with the given name.
+     * 
+     * @param name
+     *            The name to identify the new player.
+     */
+    private void addPlayer(String name, int score) {
+
+        Player player = new Player(name, score);
         playerList.add(player);
         sortPlayerList();
         invalidateOptionsMenu();
@@ -307,7 +521,7 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
             Fragment fragment = new ScoreSectionFragment();
             Bundle args = new Bundle();
             args.putInt(ScoreSectionFragment.PLAYER_POSITION, position);
-            args.putSerializable(ScoreSectionFragment.PLAYER_LIST, (Serializable) playerList);
+            Log.i("ScoreBoard", "GET ITEM - PLAYER LIST SIZE = " + playerList.size());
             fragment.setArguments(args);
             return fragment;
         }
@@ -331,140 +545,6 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
         public int getItemPosition(Object object) {
 
             return POSITION_NONE;
-        }
-    }
-
-    /**
-     * A fragment representing an individual player which displays the player's
-     * current score.
-     */
-    public static class ScoreSectionFragment extends Fragment {
-
-        /**
-         * The fragment argument representing the player whose score to show.
-         */
-        public static final String PLAYER_POSITION = "player_position";
-        public static final String PLAYER_LIST = "player_list";
-
-        public ScoreSectionFragment() {
-        }
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public View onCreateView(LayoutInflater inflater, ViewGroup container,
-                Bundle savedInstanceState) {
-
-            int position = getArguments().getInt(PLAYER_POSITION);
-            List<Player> playerList = (List<Player>) getArguments().getSerializable(PLAYER_LIST);
-
-            if(position > 0) {
-                return getPlayerView(inflater, container, position, playerList);
-            } else {
-                return getMainScoreBoardView(inflater, container, playerList);
-            }
-        }
-
-        /**
-         * Returns the view for the specified player which will display their
-         * score.
-         * 
-         * @param inflater
-         *            Used to inflate the view layout
-         * @param container
-         *            View container
-         * @param position
-         *            User which to display
-         * @param playerList
-         *            List of players currently added
-         * @return View
-         */
-        private View getPlayerView(LayoutInflater inflater, ViewGroup container, int position,
-                List<Player> playerList) {
-
-            View rootView = inflater
-                    .inflate(R.layout.fragment_score_board_player, container, false);
-            TextView scoreTextView = (TextView) rootView.findViewById(R.id.score_label);
-
-            scoreTextView.setText(Integer.toString(playerList.get(position - 1).getScore()));
-            return rootView;
-        }
-
-        /**
-         * Returns the view for the main scoreboard to display the overall
-         * scores to the user.
-         * 
-         * @param inflater
-         *            Used to inflate the view layout
-         * @param container
-         *            View container.
-         * @param playerList
-         *            List of players currently added
-         * @return View
-         */
-        private View getMainScoreBoardView(LayoutInflater inflater, ViewGroup container,
-                List<Player> playerList) {
-
-            View view = inflater.inflate(R.layout.fragment_score_board, container, false);
-
-            TableLayout table = (TableLayout) view.findViewById(R.id.main_scoreboard);
-            addHeaders(inflater, table);
-
-            if(playerList != null) {
-                for(Player player : playerList) {
-                    addPlayerRow(inflater, table, player);
-                }
-            }
-
-            return view;
-        }
-
-        /**
-         * Adds the Name and Score headers to the main scoreboard.
-         * 
-         * @param inflater
-         *            Used to inflate the view layout
-         * @param table
-         *            The scoreboard.
-         */
-        private void addHeaders(LayoutInflater inflater, TableLayout table) {
-
-            TableRow header = (TableRow) inflater
-                    .inflate(R.layout.score_board_detail, table, false);
-
-            TextView nameColumn = (TextView) header.findViewById(R.id.name);
-            nameColumn.setText(R.string.score_board_name);
-            nameColumn.setTextSize(25);
-
-            TextView scoreColumn = (TextView) header.findViewById(R.id.score);
-            scoreColumn.setText(R.string.score_board_score);
-            scoreColumn.setTextSize(25);
-
-            table.addView(header);
-        }
-
-        /**
-         * Adds the player and their score to the main scoreboard.
-         * 
-         * @param inflater
-         *            Used to inflate the view layout
-         * @param table
-         *            The scoreboard.
-         * @param player
-         *            Player to add to the scoreboard
-         */
-        private void addPlayerRow(LayoutInflater inflater, TableLayout table, Player player) {
-
-            TableRow row = (TableRow) inflater.inflate(R.layout.score_board_detail, table, false);
-
-            TextView nameColumn = (TextView) row.findViewById(R.id.name);
-            nameColumn.setText(player.getName());
-            nameColumn.setTextSize(25);
-
-            TextView scoreColumn = (TextView) row.findViewById(R.id.score);
-            scoreColumn.setText(Integer.toString(player.getScore()));
-            scoreColumn.setTextSize(25);
-
-            table.addView(row);
         }
     }
 }
