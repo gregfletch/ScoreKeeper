@@ -1,0 +1,45 @@
+#
+# Copyright 2013 Greg Fletcher
+#
+# This file is part of Game ScoreKeeper.
+#
+# Game ScoreKeeper is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3, or (at
+# your option) any later version.
+#
+# Game ScoreKeeper is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+# of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Game ScoreKeeper; see the file COPYING.  If not, see
+# <http://www.gnu.org/licenses/>.
+#
+
+Game ScoreKeeper
+================
+
+Author: Greg Fletcher
+Email: <gregfletch@gmail.com>
+
+Do you enjoy playing card games or board games that require you to keep
+score (such as Scrabble, Quiddler, Munchkin, Rummy, etc.), but hate
+doing all that complicated math after each turn?  Then this app is for
+you!
+
+To begin, add the players who will be playing and when it comes time
+to update a player's score, simply click the edit button in the Action
+Bar and enter the number of points to add (negative number will subtract
+that number of points).  Your Android device takes care of all that tricky
+math.  As a bonus, share the scoreboard with the other players using
+NFC and Android Beam!
+
+This app is only supported on phones and tablets running Ice Cream Sandwich
+(Android 4.0) or newer in order to support the NFC functionality.
+
+This is an open source project released under the GPL.  Source code is
+available at https://github.com/gregfletch/ScoreKeeper.  Issues are
+tracked at https://github.com/gregfletch/ScoreKeeper/issues.  Bug reports
+and code contributions are welcome!

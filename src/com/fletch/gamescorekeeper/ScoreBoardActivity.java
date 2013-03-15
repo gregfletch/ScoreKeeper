@@ -1,10 +1,12 @@
 package com.fletch.gamescorekeeper;
 
 import java.io.Serializable;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 import android.annotation.SuppressLint;
 import android.app.PendingIntent;
@@ -92,10 +94,8 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
             return;
         }
 
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
-            // Register a callback for creating NDEF messages.
-            mNfcAdapter.setNdefPushMessageCallback(this, this);
-        }
+        // Register a callback for creating NDEF messages.
+        mNfcAdapter.setNdefPushMessageCallback(this, this);
 
         pendingIntent = PendingIntent.getActivity(this, 0,
                 new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0);
@@ -208,16 +208,23 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
     @Override
     public NdefMessage createNdefMessage(NfcEvent event) {
 
+        String message;
+        if(mViewPager.getCurrentItem() == 0) {
+            message = NfcUtils.getPlayerListAsString(playerList);
+        } else {
+            message = NfcUtils.getPlayerAsString(playerList.get(mViewPager.getCurrentItem() - 1));
+        }
+
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-            String message;
-            if(mViewPager.getCurrentItem() == 0) {
-                message = NfcUtils.getPlayerListAsString(playerList);
-            } else {
-                message = NfcUtils
-                        .getPlayerAsString(playerList.get(mViewPager.getCurrentItem() - 1));
-            }
             NdefMessage ndefMessage = new NdefMessage(new NdefRecord[] {
                     NdefRecord.createMime("application/vnd.com.fletch.gamescorekeeper",
+                            message.getBytes()),
+                    NdefRecord.createApplicationRecord("com.fletch.gamescorekeeper") });
+
+            return ndefMessage;
+        } else if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+            NdefMessage ndefMessage = new NdefMessage(new NdefRecord[] {
+                    createMimeNdefRecord("application/vnd.com.fletch.gamescorekeeper",
                             message.getBytes()),
                     NdefRecord.createApplicationRecord("com.fletch.gamescorekeeper") });
 
@@ -500,6 +507,29 @@ public class ScoreBoardActivity extends FragmentActivity implements InputDialogL
             }
         }
         return 0;
+    }
+
+    /**
+     * This helper method is used in order to support NFC in devices running ICS
+     * since NdefRecord.createMime() is only supported in API 16+ (Jelly Bean or
+     * newer).
+     * 
+     * @param mimeType
+     *            The mime type.
+     * @param message
+     *            The message payload.
+     * @return NdefRecord
+     */
+    private NdefRecord createMimeNdefRecord(String mimeType, byte[] message) {
+
+        // Normalize the mime type
+        mimeType = mimeType.trim();
+        mimeType = mimeType.toLowerCase(Locale.getDefault());
+
+        NdefRecord mimeRecord = new NdefRecord(NdefRecord.TNF_MIME_MEDIA, mimeType.getBytes(Charset
+                .forName("US-ASCII")), new byte[0], message);
+
+        return mimeRecord;
     }
 
     /**
